@@ -14,29 +14,17 @@ import (
 
 )
 
+const (
+	timeSliceLength  = 8
+	protocolICMP     = 1
+    broadcast        = "0.0.0.0"
+)
+
 type packet struct {
 	bytes  []byte
 	nbytes int
 	ttl    int
 }
-
-func bytesToTime(b []byte) time.Time {
-	var nsec int64
-	for i := uint8(0); i < 8; i++ {
-		nsec += int64(b[i]) << ((7 - i) * 8)
-	}
-	return time.Unix(nsec/1000000000, nsec%1000000000)
-}
-
-func timeToBytes(t time.Time) []byte {
-	nsec := t.UnixNano()
-	b := make([]byte, 8)
-	for i := uint8(0); i < 8; i++ {
-		b[i] = byte((nsec >> ((7 - i) * 8)) & 0xff)
-	}
-	return b
-}
-
 
 type Packet struct {
 	Rtt time.Duration
@@ -46,12 +34,6 @@ type Packet struct {
     Seq int
 	Ttl int
 }
-
-const (
-	timeSliceLength  = 8
-	protocolICMP     = 1
-	protocolIPv6ICMP = 58
-)
 
 type Request struct {
     ipaddr      *net.IPAddr
@@ -71,6 +53,23 @@ type Request struct {
     PacketsSent int
     PacketsRecv int
     OnRecv      func(*Packet)
+}
+
+func bytesToTime(b []byte) time.Time {
+	var nsec int64
+	for i := uint8(0); i < 8; i++ {
+		nsec += int64(b[i]) << ((7 - i) * 8)
+	}
+	return time.Unix(nsec/1000000000, nsec%1000000000)
+}
+
+func timeToBytes(t time.Time) []byte {
+	nsec := t.UnixNano()
+	b := make([]byte, 8)
+	for i := uint8(0); i < 8; i++ {
+		b[i] = byte((nsec >> ((7 - i) * 8)) & 0xff)
+	}
+	return b
 }
 
 func InitRequest(host string, addr *net.IPAddr, timeout time.Duration, pid int, ipv4 bool, count int) (*Request, error){
@@ -109,10 +108,9 @@ func (req *Request)Start() {
 		}
 		conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true)
 	} else {
-		if conn = req.listen("ip6:58"); conn == nil {
-			return
-		}
-		conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true)
+        fmt.Println("IPv6 not implemented")
+		return
+
 	}
 	defer conn.Close()
 
@@ -124,7 +122,7 @@ func (req *Request)Start() {
 
 	err := req.send(conn)
 	if err != nil {
-		fmt.Println(err.Error())
+		panic(err)
 	}
 
 	timeout := time.NewTicker(req.Timeout)
@@ -147,12 +145,12 @@ func (req *Request)Start() {
 			}
 			err = req.send(conn)
 			if err != nil {
-				fmt.Println("FATAL: ", err.Error())
+				panic(err)
 			}
 		case r := <-recv:
 			err := req.parsePacket(r)
 			if err != nil {
-				fmt.Println("FATAL: ", err.Error())
+				panic(err)
 			}
 		}
 		if req.Count > 0 && req.PacketsRecv >= req.Count {
@@ -166,7 +164,7 @@ func (req *Request)Start() {
 
 func (req *Request) listen(proto string) *icmp.PacketConn {
 
-    conn, err := icmp.ListenPacket(proto, req.hostname)
+    conn, err := icmp.ListenPacket(proto, "")
 	if err != nil {
 		panic(err);
 		close(req.handle)
@@ -240,11 +238,9 @@ func (req *Request) recv( conn *icmp.PacketConn, recv chan<- *packet, wg *sync.W
 					ttl = cm.TTL
 				}
 			} else {
-				var cm *ipv6.ControlMessage
-				n, cm, _, err = conn.IPv6PacketConn().ReadFrom(bytes)
-				if cm != nil {
-					ttl = cm.HopLimit
-				}
+                fmt.Println("IPv6 not implemented")
+                return
+				
 			}
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
@@ -266,15 +262,15 @@ func (req *Request) recv( conn *icmp.PacketConn, recv chan<- *packet, wg *sync.W
 func (req *Request) parsePacket(recv *packet) error{
 
     receivedAt := time.Now()
+    var err error
     var proto int
     if req.ipv4 {
         proto = protocolICMP
     } else {
-        proto = protocolIPv6ICMP
+		return fmt.Errorf("IPv6 not implemented", err.Error())
     }
 
     var m *icmp.Message
-    var err error
     if m, err = icmp.ParseMessage(proto, recv.bytes); err != nil {
         return fmt.Errorf("error parsing icmp message: %s", err.Error())
     }

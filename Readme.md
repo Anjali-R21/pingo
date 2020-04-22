@@ -5,7 +5,7 @@ Using ping from this package requires *root privileges*
 
 Usage:
 
-ping [-c count] [-t timeout] host
+./pingg [-c count] [-t timeout] host
 
 Options:
 
